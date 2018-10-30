@@ -1,0 +1,5 @@
+# GoLand
+.idea/
+
+# executable
+go-pmap
