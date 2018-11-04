@@ -16,15 +16,6 @@ type KernelThread struct {
 	startStack 	uint64
 }
 
-
-type ThreadIOCountersStat struct {
-	ReadCount  uint64 `json:"readCount"`
-	WriteCount uint64 `json:"writeCount"`
-	ReadBytes  uint64 `json:"readBytes"`
-	WriteBytes uint64 `json:"writeBytes"`
-}
-
-
 func GetListOfKernelThreadsFromJStack(pid int32, mapOfJavaThread map[int]JavaThread)(*[]KernelThread, error) {
 	var listOfKernelThreads []KernelThread
 
@@ -54,7 +45,7 @@ func GetListOfKernelThreadsFromProcStat(pid int32) (*[]KernelThread, error) {
 		lwp := KernelThread{}
 		lwp.pid = int(pid)
 		lwp.tid = int(k)
-		stackaddress, err := getProcStartStack(pid, true, k)
+		stackaddress, err := GetProcStats(pid, true, k)
 		if err != nil {
 			//break loop and return error immediately
 			return nil, err
@@ -75,7 +66,7 @@ func getProcess(pid int32) (proc *process.Process) {
 	return proc
 }
 
-func getProcStartStack(pid int32, isLwp bool, tid int32) (uint64, error){
+func GetProcStats(pid int32, isLwp bool, tid int32) (uint64, error){
 	var statPath string
 
 	if isLwp {
@@ -85,7 +76,7 @@ func getProcStartStack(pid int32, isLwp bool, tid int32) (uint64, error){
 		statPath = "/proc/" + strconv.Itoa(int(pid)) + "/stat"
 	}
 
-	fields, err := getProcStatFields(pid, statPath)
+	fields, err := GetProcStatFields(pid, statPath)
 	if err != nil {
 		return 0, err
 	}
@@ -103,7 +94,7 @@ func getProcStartStack(pid int32, isLwp bool, tid int32) (uint64, error){
 	return startstack, nil
 }
 
-func getProcStatFields(pid int32, statPath string) ([]string, error) {
+func GetProcStatFields(pid int32, statPath string) ([]string, error) {
 	contents, err := ioutil.ReadFile(statPath)
 	if err != nil {
 		return nil, err
@@ -112,7 +103,7 @@ func getProcStatFields(pid int32, statPath string) ([]string, error) {
 	return fields, nil
 }
 
-func getThreadIoStat(pid int32, tid int32) (*ThreadIOCountersStat, error) {
+func GetThreadIoStat(pid int32, tid int32) (*process.IOCountersStat, error) {
 	var ioPath = "/proc/" + strconv.Itoa(int(pid)) + "/task/" + strconv.Itoa(int(tid)) + "/io"
 
 	ioline, err := ioutil.ReadFile(ioPath)
@@ -120,7 +111,7 @@ func getThreadIoStat(pid int32, tid int32) (*ThreadIOCountersStat, error) {
 		return nil, err
 	}
 	lines := strings.Split(string(ioline), "\n")
-	ret := &ThreadIOCountersStat{}
+	ret := process.IOCountersStat{}
 
 	for _, line := range lines {
 		field := strings.Fields(line)
@@ -147,10 +138,8 @@ func getThreadIoStat(pid int32, tid int32) (*ThreadIOCountersStat, error) {
 		}
 	}
 
-	return ret, nil
+	return &ret, nil
 }
-
-
 
 func searchProcessByPid(target int32) (*process.Process, error) {
 	listOfProcesses, _ := process.Processes()

@@ -66,14 +66,14 @@ func pmap(pid int32) {
 	}
 	////////////////////////////////////
 
-	listOfMemoryInfo, err := GetProcessMemoryMaps(false, pid)
+	listOfMemorySegment, err := GetProcessMemoryMaps(false, pid)
 
 	if err != nil {
 		glog.Fatalf("GetProcessMemoryMaps Cause: [%s]", err)
 	}
 
-	//for i := 0; i < len(*listOfMemoryInfo); i++ {
-	//	mmap := (*listOfMemoryInfo)[i]
+	//for i := 0; i < len(*listOfMemorySegment); i++ {
+	//	mmap := (*listOfMemorySegment)[i]
 	//	glog.Infof("Ref: %v, RSS : %v \t PSS : %v \t anon : %v \t size %v \t Stack Start : %v \t Stack Stop : %v \t Path: %v\n", mmap.Rss, mmap.Pss, mmap.Anonymous, mmap.Referenced, mmap.Size, Stringify64BitAddress(mmap.stackStart), Stringify64BitAddress(mmap.stackStop), mmap.Path)
 	//}
 
@@ -93,21 +93,28 @@ func pmap(pid int32) {
 
 	///////////////////////////////////////
 
-	associateKernelThreadAndJavaThread(listOfKernelThreads, mapOfJavaThread, listOfMemoryInfo)
+	listOfTaskSegment := associateKernelThreadAndJavaThread(pid, listOfKernelThreads, mapOfJavaThread, listOfMemorySegment)
 
-	printMemorySegments(listOfMemoryInfo)
+	printMemorySegments(listOfTaskSegment)
 }
 
-func associateKernelThreadAndJavaThread(listOfKernelThreads *[]KernelThread, mapOfJavaThreads map[int]JavaThread, listOfMemorySegments *[]ProcessMemorySegment) {
-	var foundSegments = make(map[int]*ProcessMemorySegment)
+func associateKernelThreadAndJavaThread(pid int32, listOfKernelThreads *[]KernelThread, mapOfJavaThreads map[int]JavaThread, listOfMemorySegments *[]ProcessMemorySegment)(*[]TaskMemorySegment) {
+	var foundSegments = make(map[int]*TaskMemorySegment)
+	var listOfTaskSegments []TaskMemorySegment
+
+	//Copy ProcessMemorySegment to TaskMemorySegment
+	for i := 0; i < len(*listOfMemorySegments); i++ {
+		segment := (*listOfMemorySegments)[i]
+		listOfTaskSegments = append(listOfTaskSegments, NewTaskMemorySegment(segment))
+	}
 
 	//associate KernelThreads and ProcessMemorySegment
 	for i := 0; i < len(*listOfKernelThreads); i++ {
 		kthread := (*listOfKernelThreads)[i]
 
-		for j := 0; j < len(*listOfMemorySegments); j++ {
+		for j := 0; j < len(listOfTaskSegments); j++ {
 			//call by reference of ProcessMemorySegment
-			segment := &((*listOfMemorySegments)[j])
+			segment := &((listOfTaskSegments)[j])
 			if kthread.startStack >= segment.stackStart && kthread.startStack <= segment.stackStop {
 				foundSegments[kthread.tid] = segment
 				break
@@ -125,23 +132,34 @@ func associateKernelThreadAndJavaThread(listOfKernelThreads *[]KernelThread, map
 
 			segment.frameType = "JavaThread"
 			segment.Path = jthread.threadname
+			segment.taskID = jthread.nid
+			ioStat, err := GetThreadIoStat(pid, int32(segment.taskID))
+			if err != nil {
+				glog.Fatalf("GetThreadIoStat Cause: [%s]", err)
+			}
+			segment.WriteCount = ioStat.WriteCount
+			segment.ReadCount = ioStat.ReadCount
+			segment.WriteBytes = ioStat.WriteBytes
+			segment.ReadBytes = ioStat.ReadBytes
 		} else {
 			glog.Warningf("java thread (%v) NOT found\n", tid)
 
 		}
 
 	}
+
+	return &listOfTaskSegments
 }
 
-func printMemorySegments(listOfMemorySegments *[]ProcessMemorySegment) {
-	fmt.Printf("[%-18s : %-18s] %9s %9s %9s %-10s %-30s\n", "START ADDR", "STOP ADDR", "PSS", "RSS", "DIRTY", "TYPE", "DATA")
+func printMemorySegments(listOfMemorySegments *[]TaskMemorySegment) {
+	fmt.Printf("[%-18s : %-18s] %9s %9s %9s %9s %9s %9s %9s %-10s %-30s\n", "START ADDR", "STOP ADDR", "PSS", "RSS", "DIRTY", "RD BYTES", "WRT BYTES", "RD CNT", "WRT CNT", "TYPE", "DATA")
 	for i := 0; i < len(*listOfMemorySegments); i++ {
 		segment := (*listOfMemorySegments)[i]
 
 		if(strings.HasPrefix(segment.Path, "/")){
-			fmt.Printf("[%-18v : %-18v] %9v %9v %9v [%-10s] %-30v\n", Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, segment.frameType, segment.Path)
+			fmt.Printf("[%-18v : %-18v] %9v %9v %9v %9v %9v %9v %9v [%-10s] %-30v\n", Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, segment.ReadBytes, segment.WriteBytes, segment.ReadCount, segment.WriteCount, segment.frameType, segment.Path)
 		} else {
-			fmt.Printf("[%-18v : %-18v] %9v %9v %9v [%-10s] %-30v\n", Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, segment.frameType, segment.Path)
+			fmt.Printf("[%-18v : %-18v] %9v %9v %9v %9v %9v %9v %9v [%-10s] %-30v\n", Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, segment.ReadBytes, segment.WriteBytes, segment.ReadCount, segment.WriteCount, segment.frameType, segment.Path)
 		}
 
 	}

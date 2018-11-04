@@ -18,6 +18,37 @@ type ProcessMemorySegment struct {
 	frameType    string `json:"frameType"`
 }
 
+type TaskMemorySegment struct {
+	ProcessMemorySegment
+	taskID	   int    `json:"taskID"`
+	ReadCount  uint64 `json:"readCount"`
+	WriteCount uint64 `json:"writeCount"`
+	ReadBytes  uint64 `json:"readBytes"`
+	WriteBytes uint64 `json:"writeBytes"`
+}
+
+func NewTaskMemorySegment(segment ProcessMemorySegment)(TaskMemorySegment) {
+	var ret = TaskMemorySegment{}
+
+	ret.Path = segment.Path
+	ret.stackStop = segment.stackStop
+	ret.stackStart = segment.stackStart
+	ret.PrivateClean = segment.PrivateClean
+	ret.PrivateDirty = segment.PrivateDirty
+	ret.Anonymous = segment.Anonymous
+	ret.Rss = segment.Rss
+	ret.Pss = segment.Pss
+	ret.Size = segment.Size
+	ret.Referenced = segment.Referenced
+	ret.SharedDirty = segment.SharedDirty
+	ret.SharedClean = segment.SharedClean
+	ret.Swap = segment.Swap
+	ret.frameType = segment.frameType
+	ret.framePerm = segment.framePerm
+
+	return ret
+}
+
 // MemoryMaps get memory maps from /proc/(pid)/smaps
 func GetProcessMemoryMaps(grouped bool, pid int32) (*[]ProcessMemorySegment, error) {
 	return GetProcessMemoryMapsWithContext(context.Background(), grouped, pid)
