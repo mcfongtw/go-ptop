@@ -5,7 +5,7 @@ import (
 	"regexp"
 )
 
-func parseRegexByGroup(regEx, expr string) (paramsMap map[string]string) {
+func ParseRegexByGroup(regEx, expr string) (paramsMap map[string]string) {
 
 	var compRegEx = regexp.MustCompile(regEx)
 	match := compRegEx.FindStringSubmatch(expr)
@@ -19,7 +19,7 @@ func parseRegexByGroup(regEx, expr string) (paramsMap map[string]string) {
 	return paramsMap
 }
 
-func stringify64BitAddress(addr uint64)(string) {
+func Stringify64BitAddress(addr uint64)(string) {
 	hexAddr := "0x" + fmt.Sprintf("%016x", addr)
 
 	return hexAddr

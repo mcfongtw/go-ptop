@@ -23,41 +23,7 @@ type ThreadIOCountersStat struct {
 	WriteBytes uint64 `json:"writeBytes"`
 }
 
-func getProcess(pid int32) (proc *process.Process) {
-	proc, _ = searchProcessByPid(pid)
-
-	return proc
-}
-
-func getListOfKernelThreads(pid int32) (*[]KernelThread) {
-	proc:= getProcess(pid)
-	var listOfKernelThreads []KernelThread
-
-	threadMaps, err := proc.Threads()
-	if err != nil {
-		log.Fatal("proc.Threads has faild!")
-		return nil
-	}
-
-	for k, _ := range threadMaps {
-		lwp := KernelThread{}
-		lwp.pid = int(pid)
-		lwp.tid = int(k)
-		stackaddress, err := getProcStartStack(pid, true, k)
-		if err != nil {
-			continue
-		}
-		//lwp.startStack = "0x" + strconv.FormatUint(stackaddress, 16)
-		lwp.startStack = stackaddress
-
-		listOfKernelThreads = append(listOfKernelThreads, lwp)
-
-	}
-
-	return &listOfKernelThreads
-}
-
-func getListOfKernelThreadsFromJStack(pid int32, mapOfJavaThread map[int]JavaThread)(*[]KernelThread) {
+func GetListOfKernelThreadsFromJStack(pid int32, mapOfJavaThread map[int]JavaThread)(*[]KernelThread, error) {
 	var listOfKernelThreads []KernelThread
 
 	for tid, jthread := range mapOfJavaThread {
@@ -70,12 +36,44 @@ func getListOfKernelThreadsFromJStack(pid int32, mapOfJavaThread map[int]JavaThr
 		listOfKernelThreads = append(listOfKernelThreads, lwp)
 	}
 
-	return &listOfKernelThreads
+	return &listOfKernelThreads, nil
 }
 
+func GetListOfKernelThreadsFromProcStat(pid int32) (*[]KernelThread, error) {
+	proc:= getProcess(pid)
+	var listOfKernelThreads []KernelThread
 
+	threadMaps, err := proc.Threads()
+	if err != nil {
+		log.Panicf("Failed to get number of tasks under /proc/%d/. Cause: [%s]", pid, err)
+	}
 
-func getProcStartStack(pid int32, isLwp bool, tid int32) (uint64, error ){
+	for k, _ := range threadMaps {
+		lwp := KernelThread{}
+		lwp.pid = int(pid)
+		lwp.tid = int(k)
+		stackaddress, err := getProcStartStack(pid, true, k)
+		if err != nil {
+			//break loop and return error immediately
+			return nil, err
+		}
+		//lwp.startStack = "0x" + strconv.FormatUint(stackaddress, 16)
+		lwp.startStack = stackaddress
+
+		listOfKernelThreads = append(listOfKernelThreads, lwp)
+
+	}
+
+	return &listOfKernelThreads, nil
+}
+
+func getProcess(pid int32) (proc *process.Process) {
+	proc, _ = searchProcessByPid(pid)
+
+	return proc
+}
+
+func getProcStartStack(pid int32, isLwp bool, tid int32) (uint64, error){
 	var statPath string
 
 	if isLwp {
@@ -162,5 +160,5 @@ func searchProcessByPid(target int32) (*process.Process, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("pid %s not found!", target)
+	return nil, fmt.Errorf("pid %d not found!", target)
 }

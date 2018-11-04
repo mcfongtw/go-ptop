@@ -49,8 +49,11 @@ func mainLoop(pid int32) {
 }
 
 func pmap(pid int32) {
-	var jstackResp string = getJavaThreadDump(pid)
+	var jstackResp, err = GetJavaThreadDump(pid)
 
+	if(err != nil) {
+		glog.Fatalf("GetJavaThreadDump Cause: [%s]", err)
+	}
 
 	////////////////////////////////////
 
@@ -62,25 +65,28 @@ func pmap(pid int32) {
 	}
 	////////////////////////////////////
 
-	listOfMemoryInfo, error := getProcessMemoryMaps(false, pid)
+	listOfMemoryInfo, err := GetProcessMemoryMaps(false, pid)
 
-	if error != nil {
-		glog.V(3).Infof("getProcessMemoryMaps error:", error)
-		return
+	if err != nil {
+		glog.Fatalf("GetProcessMemoryMaps Cause: [%s]", err)
 	}
 
 	//for i := 0; i < len(*listOfMemoryInfo); i++ {
 	//	mmap := (*listOfMemoryInfo)[i]
-	//	glog.Infof("Ref: %v, RSS : %v \t PSS : %v \t anon : %v \t size %v \t Stack Start : %v \t Stack Stop : %v \t Path: %v\n", mmap.Rss, mmap.Pss, mmap.Anonymous, mmap.Referenced, mmap.Size, stringify64BitAddress(mmap.stackStart), stringify64BitAddress(mmap.stackStop), mmap.Path)
+	//	glog.Infof("Ref: %v, RSS : %v \t PSS : %v \t anon : %v \t size %v \t Stack Start : %v \t Stack Stop : %v \t Path: %v\n", mmap.Rss, mmap.Pss, mmap.Anonymous, mmap.Referenced, mmap.Size, Stringify64BitAddress(mmap.stackStart), Stringify64BitAddress(mmap.stackStop), mmap.Path)
 	//}
 
 	////////////////////////////////////
 
-	listOfKernelThreads := getListOfKernelThreadsFromJStack(pid, mapOfJavaThread)
+	listOfKernelThreads, err := GetListOfKernelThreadsFromJStack(pid, mapOfJavaThread)
+
+	if err != nil {
+		glog.Fatalf("GetListOfKernelThreadsFromJStack Cause: [%s]", err)
+	}
 
 	for i := 0; i < len(*listOfKernelThreads); i++ {
 		kthread := (*listOfKernelThreads)[i]
-		glog.V(0).Infof("tid : %v, start stack : %v\n", kthread.tid, stringify64BitAddress(kthread.startStack))
+		glog.V(0).Infof("tid : %v, start stack : %v\n", kthread.tid, Stringify64BitAddress(kthread.startStack))
 
 	}
 
@@ -116,7 +122,7 @@ func associateKernelThreadAndJavaThread(listOfKernelThreads *[]KernelThread, map
 
 			mappedJavaThreadStacks[segment.stackStart] = jthread
 		} else {
-			glog.V(0).Infof("java thread (%v) NOT found\n", tid)
+			glog.Warningf("java thread (%v) NOT found\n", tid)
 
 		}
 
@@ -133,10 +139,10 @@ func printMemorySegments(listOfMemorySegments *[]ProcessMemorySegment, mappedJav
 
 		jthread, ok := mappedJavaThreadStacks[segment.stackStart]
 		if ok {
-			fmt.Printf("[%-18v : %-18v] %9v %9v %9v %-30v\n", stringify64BitAddress(segment.stackStart), stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, jthread.threadname)
+			fmt.Printf("[%-18v : %-18v] %9v %9v %9v [%-30v]\n", Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, jthread.threadname)
 			//mappedJavaThreadStacks[segment] = jthread
 		} else {
-			fmt.Printf("[%-18v : %-18v] %9v %9v %9v %-30v\n", stringify64BitAddress(segment.stackStart), stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, segment.Path)
+			fmt.Printf("[%-18v : %-18v] %9v %9v %9v %-30v\n", Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, segment.Path)
 		}
 
 	}

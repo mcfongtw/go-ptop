@@ -24,9 +24,9 @@ type JavaThread struct {
 
 const THREAD_REGEX = `\"(?P<threadName>[^\"]+)\".*tid=(?P<tid>0x[0-9a-f]+).*nid=(?P<nid>0x[0-9a-f]+).*\[(?P<stackPtr>0x[0-9a-f]+)\]`
 
-func getJavaThreadDump(targetPid int32) (jstackResp string) {
+func GetJavaThreadDump(targetPid int32) (string, error) {
 	var path string = fmt.Sprintf("/tmp/.java_pid%d", targetPid)
-	var exist, err = checkFileExists(path)
+	var exist, _ = checkFileExists(path)
 
 	if(!exist) {
 		startServer(targetPid, path)
@@ -37,26 +37,26 @@ func getJavaThreadDump(targetPid int32) (jstackResp string) {
 	socket, err := net.DialUnix(transportType, nil, &laddr)
 	//socket, err := net.Dial("unix", path)
 	if err != nil {
-		glog.V(3).Infof("Dial error", err)
-		return
+		glog.Errorf("Dial error", err)
+		return "" , err
 	}
 
 
-	send_string(socket,"1")
-	send_string(socket, "threaddump")
+	sendString(socket,"1")
+	sendString(socket, "threaddump")
 	var args[3]string
 	args[0] = ""
-	send_string(socket, args[0])
+	sendString(socket, args[0])
 	args[1] = ""
-	send_string(socket, args[1])
+	sendString(socket, args[1])
 	args[2] = "  "
-	send_string(socket, args[2])
+	sendString(socket, args[2])
 
 	fmt.Printf("Asked for dump, waiting for reply...\n")
 	glog.V(3).Infof("Asked for dump, waiting for reply...\n")
 
 
-	res := read_all(socket)
+	res := readString(socket)
 
 	//threadDumpLines := strings.Split(res, "\n")
 	//
@@ -66,7 +66,7 @@ func getJavaThreadDump(targetPid int32) (jstackResp string) {
 
 	socket.Close()
 
-	return res
+	return res, nil
 }
 
 func startServer(pid int32, udsPath string) {
@@ -82,8 +82,7 @@ func startServer(pid int32, udsPath string) {
 	proc, err := searchProcessByPid(pid)
 
 	if err != nil {
-		log.Fatal("proc [%s] cannot be found!", err)
-		return
+		log.Fatalf("proc [%d] cannot be found! Cause: [%s]", pid, err)
 	}
 
 	proc.SendSignal(unix.SIGQUIT)
@@ -123,7 +122,7 @@ func checkFileExists(path string) (bool, error) {
 
 
 
-func send_string(socket net.Conn, message string) {
+func sendString(socket net.Conn, message string) {
 	nBytes, error := socket.Write([]byte(message + "\x00"))
 
 	if error != nil {
@@ -134,7 +133,7 @@ func send_string(socket net.Conn, message string) {
 	}
 }
 
-func read_all(socket net.Conn)(res string) {
+func readString(socket net.Conn)(res string) {
 	var result string = ""
 
 	buf := make([]byte, 4096)
@@ -157,7 +156,7 @@ func parseJavaThreadInfo(jstackOutput string) (map[int]JavaThread) {
 	lines := strings.Split(jstackOutput, "\n")
 	var result = make(map[int]JavaThread)
 	for _, line := range lines {
-		params := parseRegexByGroup(THREAD_REGEX, line)
+		params := ParseRegexByGroup(THREAD_REGEX, line)
 		if len(params) > 0 {
 
 			assembleJavaThreadInfo := func (paramsMap map[string]string) (JavaThread, error) {

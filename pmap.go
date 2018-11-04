@@ -26,11 +26,11 @@ type ProcessMemorySegment struct {
 }
 
 // MemoryMaps get memory maps from /proc/(pid)/smaps
-func getProcessMemoryMaps(grouped bool, pid int32) (*[]ProcessMemorySegment, error) {
-	return getProcessMemoryMapsWithContext(context.Background(), grouped, pid)
+func GetProcessMemoryMaps(grouped bool, pid int32) (*[]ProcessMemorySegment, error) {
+	return GetProcessMemoryMapsWithContext(context.Background(), grouped, pid)
 }
 
-func getProcessMemoryMapsWithContext(ctx context.Context, grouped bool, pid int32) (*[]ProcessMemorySegment, error) {
+func GetProcessMemoryMapsWithContext(ctx context.Context, grouped bool, pid int32) (*[]ProcessMemorySegment, error) {
 	var ret []ProcessMemorySegment
 	smapsPath := "/proc/" + strconv.Itoa(int(pid)) + "/smaps"
 	contents, err := ioutil.ReadFile(smapsPath)
@@ -46,12 +46,12 @@ func getProcessMemoryMapsWithContext(ctx context.Context, grouped bool, pid int3
 			var stacks = strings.Split(first_line[0], "-")
 			m.stackStart, err = strconv.ParseUint(stacks[0], 16, 64)
 			if err != nil {
-				glog.V(3).Infof("Parsing stackStart failed! - ", err)
+				glog.Errorf("Parsing stackStart failed! - ", err)
 				return m, err
 			}
 			m.stackStop, _ = strconv.ParseUint(stacks[1], 16, 64)
 			if err != nil {
-				glog.V(3).Infof("Parsing stackStart failed!")
+				glog.Errorf("Parsing stackStart failed!")
 				return m, err
 			}
 			m.framePerm = first_line[1]
