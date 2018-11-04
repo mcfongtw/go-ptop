@@ -6,6 +6,7 @@ import (
 	"github.com/golang/glog"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -92,57 +93,55 @@ func pmap(pid int32) {
 
 	///////////////////////////////////////
 
-	mappedSegments := associateKernelThreadAndJavaThread(listOfKernelThreads, mapOfJavaThread, listOfMemoryInfo)
+	associateKernelThreadAndJavaThread(listOfKernelThreads, mapOfJavaThread, listOfMemoryInfo)
 
-	printMemorySegments(listOfMemoryInfo, mappedSegments)
+	printMemorySegments(listOfMemoryInfo)
 }
 
-func associateKernelThreadAndJavaThread(listOfKernelThreads *[]KernelThread, mapOfJavaThreads map[int]JavaThread, listOfMemorySegments *[]ProcessMemorySegment) (map[uint64]JavaThread) {
-	var foundSegments = make(map[int]ProcessMemorySegment)
+func associateKernelThreadAndJavaThread(listOfKernelThreads *[]KernelThread, mapOfJavaThreads map[int]JavaThread, listOfMemorySegments *[]ProcessMemorySegment) {
+	var foundSegments = make(map[int]*ProcessMemorySegment)
 
+	//associate KernelThreads and ProcessMemorySegment
 	for i := 0; i < len(*listOfKernelThreads); i++ {
 		kthread := (*listOfKernelThreads)[i]
 
 		for j := 0; j < len(*listOfMemorySegments); j++ {
-			segment := (*listOfMemorySegments)[j]
+			//call by reference of ProcessMemorySegment
+			segment := &((*listOfMemorySegments)[j])
 			if kthread.startStack >= segment.stackStart && kthread.startStack <= segment.stackStop {
 				foundSegments[kthread.tid] = segment
 				break
 			}
 		}
 	}
-	//Kernel Thread id : ProcessMemorySegment
-	//log.Printf("foundSegments len: %v\n", len(foundSegments))
+	glog.V(0).Infof("associated memory segments: %v\n", len(foundSegments))
 
-	var mappedJavaThreadStacks = make(map[uint64]JavaThread)
+
+	//associate ProcessMemorySegment and JavaThread
 	for tid, segment := range foundSegments {
 		jthread, ok := mapOfJavaThreads[tid]
 		if ok {
 			glog.V(0).Infof("Found java thread (%v) : %v\n", tid, jthread)
 
-			mappedJavaThreadStacks[segment.stackStart] = jthread
+			segment.frameType = "JavaThread"
+			segment.Path = jthread.threadname
 		} else {
 			glog.Warningf("java thread (%v) NOT found\n", tid)
 
 		}
 
 	}
-
-	return mappedJavaThreadStacks
 }
 
-func printMemorySegments(listOfMemorySegments *[]ProcessMemorySegment, mappedJavaThreadStacks map[uint64]JavaThread) {
-	fmt.Printf("[%-18s : %-18s] %9s %9s %9s %-30s\n", "START ADDR", "STOP ADDR", "PSS", "RSS", "DIRTY", "PATH")
+func printMemorySegments(listOfMemorySegments *[]ProcessMemorySegment) {
+	fmt.Printf("[%-18s : %-18s] %9s %9s %9s %-10s %-30s\n", "START ADDR", "STOP ADDR", "PSS", "RSS", "DIRTY", "TYPE", "DATA")
 	for i := 0; i < len(*listOfMemorySegments); i++ {
 		segment := (*listOfMemorySegments)[i]
 
-
-		jthread, ok := mappedJavaThreadStacks[segment.stackStart]
-		if ok {
-			fmt.Printf("[%-18v : %-18v] %9v %9v %9v [%-30v]\n", Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, jthread.threadname)
-			//mappedJavaThreadStacks[segment] = jthread
+		if(strings.HasPrefix(segment.Path, "/")){
+			fmt.Printf("[%-18v : %-18v] %9v %9v %9v [%-10s] %-30v\n", Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, segment.frameType, segment.Path)
 		} else {
-			fmt.Printf("[%-18v : %-18v] %9v %9v %9v %-30v\n", Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, segment.Path)
+			fmt.Printf("[%-18v : %-18v] %9v %9v %9v [%-10s] %-30v\n", Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, segment.frameType, segment.Path)
 		}
 
 	}

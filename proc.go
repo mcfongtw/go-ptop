@@ -16,12 +16,14 @@ type KernelThread struct {
 	startStack 	uint64
 }
 
+
 type ThreadIOCountersStat struct {
 	ReadCount  uint64 `json:"readCount"`
 	WriteCount uint64 `json:"writeCount"`
 	ReadBytes  uint64 `json:"readBytes"`
 	WriteBytes uint64 `json:"writeBytes"`
 }
+
 
 func GetListOfKernelThreadsFromJStack(pid int32, mapOfJavaThread map[int]JavaThread)(*[]KernelThread, error) {
 	var listOfKernelThreads []KernelThread

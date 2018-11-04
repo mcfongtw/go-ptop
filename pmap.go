@@ -3,26 +3,19 @@ package main
 import (
 	"context"
 	"github.com/golang/glog"
+	"github.com/shirou/gopsutil/process"
 	"io/ioutil"
 	"strconv"
 	"strings"
 )
 
 type ProcessMemorySegment struct {
-	Path         string `json:"path"`
-	Rss          uint64 `json:"rss"`
-	Size         uint64 `json:"size"`
-	Pss          uint64 `json:"pss"`
-	SharedClean  uint64 `json:"sharedClean"`
-	SharedDirty  uint64 `json:"sharedDirty"`
-	PrivateClean uint64 `json:"privateClean"`
-	PrivateDirty uint64 `json:"privateDirty"`
-	Referenced   uint64 `json:"referenced"`
-	Anonymous    uint64 `json:"anonymous"`
-	Swap         uint64 `json:"swap"`
+	//Type embedded from process.MemoryMapsStat
+	process.MemoryMapsStat
 	stackStart   uint64 `json:"startStack"`
 	stackStop    uint64 `json:"stackStop"`
 	framePerm	 string `json:"framePerm"`
+	frameType    string `json:"frameType"`
 }
 
 // MemoryMaps get memory maps from /proc/(pid)/smaps
@@ -56,6 +49,12 @@ func GetProcessMemoryMapsWithContext(ctx context.Context, grouped bool, pid int3
 			}
 			m.framePerm = first_line[1]
 			m.Path = first_line[len(first_line)-1]
+
+			if(strings.HasPrefix(m.Path, "/")) {
+				m.frameType = "mmap"
+			} else {
+				m.frameType = m.Path
+			}
 		}
 
 		for _, line := range block {
