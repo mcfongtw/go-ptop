@@ -37,19 +37,19 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stdout, "pmap <pid>\n")
+	fmt.Fprintf(os.Stdout, "ptop <pid>\n")
 }
 
 func mainLoop(pid int32) {
 	for {
 		fmt.Println("=======================================================================================")
 		fmt.Printf("Current Time: %v\n", time.Now().String())
-		go pmap(pid)
+		go ptop(pid)
 		time.Sleep(DEFAULT_PROFILE_INTERVAL_IN_SECOND * time.Second)
 	}
 }
 
-func pmap(pid int32) {
+func ptop(pid int32) {
 	var jstackResp, err = GetJavaThreadDump(pid)
 
 	if(err != nil) {
