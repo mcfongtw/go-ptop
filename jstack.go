@@ -52,7 +52,6 @@ func GetJavaThreadDump(targetPid int32) (string, error) {
 	args[2] = "  "
 	sendString(socket, args[2])
 
-	fmt.Printf("Asked for dump, waiting for reply...\n")
 	glog.V(3).Infof("Asked for dump, waiting for reply...\n")
 
 
@@ -70,7 +69,6 @@ func GetJavaThreadDump(targetPid int32) (string, error) {
 }
 
 func startServer(pid int32, udsPath string) {
-	fmt.Printf("Socket file does not exist. Asking process to start server...\n")
 	glog.V(3).Infof("Socket file does not exist. Asking process to start server...\n")
 
 	var path string = fmt.Sprintf("/proc/%d/cwd/.attach_pid%d", pid, pid)
@@ -92,7 +90,6 @@ func startServer(pid int32, udsPath string) {
 }
 
 func waitForSocketCreation(path string, waitPeriod time.Duration, maxTimeout int64) (bool) {
-	fmt.Printf("Waiting for existence of %s...\n", path)
 	glog.V(3).Infof("Waiting for existence of %s...\n", path)
 	var result bool = false
 	var tick int64 = 0

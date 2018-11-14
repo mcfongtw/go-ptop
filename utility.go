@@ -24,3 +24,21 @@ func Stringify64BitAddress(addr uint64)(string) {
 
 	return hexAddr
 }
+
+func StringfyInteger(val int) (string) {
+	str := fmt.Sprintf("%v", val)
+
+	return str
+}
+
+func StringfyUinteger32(val uint32) (string) {
+	str := fmt.Sprintf("%v", val)
+
+	return str
+}
+
+func StringfyUinteger64(val uint64) (string) {
+	str := fmt.Sprintf("%v", val)
+
+	return str
+}
