@@ -2,4 +2,7 @@
 .idea/
 
 # executable
-go-pmap
+go-ptop
+
+# jstack temp output
+.attach_pid*

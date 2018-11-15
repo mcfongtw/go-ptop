@@ -5,7 +5,7 @@ import (
 	"github.com/gizak/termui"
 	"github.com/gizak/termui/extra"
 	"github.com/golang/glog"
-	"strings"
+	"sort"
 	"time"
 )
 
@@ -21,6 +21,7 @@ func NewTableTabElement(width int) (*TableTabElement) {
 	rows := [][] string {}
 	table.Rows = rows
 	table.Width = width
+	table.Block.BorderLabel = "PTOP"
 
 	return &TableTabElement{Table: table}
 }
@@ -30,19 +31,16 @@ func (this *TableTabElement) UpdateThread(listOfMemorySegments *[]TaskMemorySegm
 	rows := [][] string {}
 	this.Table.Rows = rows
 
-	header := [] string {"stackStart", "stackStop", "task ID", "write Count", "read Count", "Type", "Path"}
+	header := [] string {"stackStart", "stackStop", "task ID", "Wrt Cnt", "Rd Cnt", "Wrt Byte", "Rd Byte", "Type", "Path"}
 	this.Table.Rows = append(this.Table.Rows, header)
 
 
 	for i := 0; i < len(*listOfMemorySegments); i++ {
 		segment := (*listOfMemorySegments)[i]
 
-		if(segment.frameType == "JavaThread") {
-			row := [] string{Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), StringfyInteger(segment.taskID),
-				StringfyUinteger64(segment.WriteCount), StringfyUinteger64(segment.ReadCount), segment.frameType, segment.Path}
-			this.Table.Rows = append(this.Table.Rows, row)
-		}
-
+		row := [] string{Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), StringfyInteger(segment.taskID),
+			StringfyUinteger64(segment.WriteCount), StringfyUinteger64(segment.ReadCount), StringfyUinteger64(segment.WriteBytes), StringfyUinteger64(segment.ReadBytes), segment.frameType, segment.Path}
+		this.Table.Rows = append(this.Table.Rows, row)
 	}
 }
 
@@ -58,16 +56,14 @@ func (this *TableTabElement) UpdateMmap(listOfMemorySegments *[]TaskMemorySegmen
 	for i := 0; i < len(*listOfMemorySegments); i++ {
 		segment := (*listOfMemorySegments)[i]
 
-		if(segment.frameType == "mmap") {
-			row := [] string{Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), StringfyUinteger64(segment.Rss), StringfyUinteger64(segment.Size),
-				segment.framePerm, segment.frameType, segment.Path}
-			this.Table.Rows = append(this.Table.Rows, row)
-		}
+		row := [] string{Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), StringfyUinteger64(segment.Rss), StringfyUinteger64(segment.Size),
+			segment.framePerm, segment.frameType, segment.Path}
+		this.Table.Rows = append(this.Table.Rows, row)
 
 	}
 }
 
-func (this *TableTabElement) UpdateOthers(listOfMemorySegments *[]TaskMemorySegment) {
+func (this *TableTabElement) Update(listOfMemorySegments *[]TaskMemorySegment) {
 	//reset rows
 	rows := [][] string {}
 	this.Table.Rows = rows
@@ -79,11 +75,9 @@ func (this *TableTabElement) UpdateOthers(listOfMemorySegments *[]TaskMemorySegm
 	for i := 0; i < len(*listOfMemorySegments); i++ {
 		segment := (*listOfMemorySegments)[i]
 
-		if(segment.frameType != "mmap" && segment.frameType != "JavaThread") {
-			row := [] string{Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), StringfyUinteger64(segment.Rss), StringfyUinteger64(segment.Size),
-				segment.frameType, segment.Path}
-			this.Table.Rows = append(this.Table.Rows, row)
-		}
+		row := [] string{Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), StringfyUinteger64(segment.Rss), StringfyUinteger64(segment.Size),
+			segment.frameType, segment.Path}
+		this.Table.Rows = append(this.Table.Rows, row)
 
 	}
 }
@@ -144,118 +138,8 @@ func associateKernelThreadAndJavaThread(pid int32, listOfKernelThreads *[]Kernel
 	return &listOfTaskSegments
 }
 
-func printMemorySegments(listOfMemorySegments *[]TaskMemorySegment) {
-	fmt.Printf("[%-18s : %-18s] %9s %9s %9s %9s %9s %9s %9s %-10s %-30s\n", "START ADDR", "STOP ADDR", "PSS", "RSS", "DIRTY", "RD BYTES", "WRT BYTES", "RD CNT", "WRT CNT", "TYPE", "DATA")
-	for i := 0; i < len(*listOfMemorySegments); i++ {
-		segment := (*listOfMemorySegments)[i]
+////////////////////////////////////////////////////////////////
 
-		if(strings.HasPrefix(segment.Path, "/")){
-			fmt.Printf("[%-18v : %-18v] %9v %9v %9v %9v %9v %9v %9v [%-10s] %-30v\n", Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, segment.ReadBytes, segment.WriteBytes, segment.ReadCount, segment.WriteCount, segment.frameType, segment.Path)
-		} else {
-			fmt.Printf("[%-18v : %-18v] %9v %9v %9v %9v %9v %9v %9v [%-10s] %-30v\n", Stringify64BitAddress(segment.stackStart), Stringify64BitAddress(segment.stackStop), segment.Pss, segment.Rss, segment.PrivateDirty, segment.ReadBytes, segment.WriteBytes, segment.ReadCount, segment.WriteCount, segment.frameType, segment.Path)
-		}
-
-	}
-}
-
-const PARAGRAPH = "[%s] Press q to quit, Press j or k to switch tabs"
-
-func tuiLoop(pid int32) {
-	err := termui.Init()
-	if err != nil {
-		panic(err)
-	}
-	defer termui.Close()
-
-	//////////////////////////////////////////////////////////////////////////////
-
-	header := termui.NewPar("[" + time.Now().String() + "] Press q to quit, Press j or k to switch tabs")
-	header.Height = 1
-	header.Width = 50
-	header.Border = false
-	header.TextBgColor = termui.ColorBlue
-	pTicker := time.NewTicker(time.Second)
-	pTickerCount := 1
-	go func() {
-		for {
-			if pTickerCount%2 == 0 {
-				header.TextFgColor = termui.ColorRed
-			} else {
-				header.TextFgColor = termui.ColorWhite
-			}
-			header.Text = "[" + time.Now().String() + "] Press q to quit, Press j or k to switch tabs"
-
-			pTickerCount++
-			<-pTicker.C
-		}
-	}()
-
-	//////////////////////////////////////////////////////////////////////////////
-
-	termWidth := 300
-
-
-	tabpane := extra.NewTabpane()
-	tabpane.Y = 1
-	tabpane.Width = 30
-	tabpane.Border = false
-
-	//////////////////////////////////////////////
-	tabThread := extra.NewTab("Thread")
-	threadTabElem := NewTableTabElement(termWidth)
-	tabThread.AddBlocks(threadTabElem.Table)
-
-
-	tabMmap := extra.NewTab("MMap")
-	mmapTabElem := NewTableTabElement(termWidth)
-	tabMmap.AddBlocks(mmapTabElem.Table)
-
-
-	tabOthers := extra.NewTab("Others")
-	othersTabElem := NewTableTabElement(termWidth)
-	tabOthers.AddBlocks(othersTabElem.Table)
-	/////////////////////////////////////////////
-
-	tabpane.SetTabs(*tabThread, *tabMmap, *tabOthers)
-	termui.Render(header, tabpane)
-	///////////////////////////////////////////////////////////////////////////////
-
-	termui.Handle("q", func(termui.Event) {
-		termui.StopLoop()
-	})
-
-	termui.Handle("j", func(termui.Event) {
-		tabpane.SetActiveLeft()
-		termui.Render(header, tabpane)
-	})
-
-	termui.Handle("k", func(termui.Event) {
-		tabpane.SetActiveRight()
-		termui.Render(header, tabpane)
-	})
-
-	drawTicker := time.NewTicker(time.Second)
-	drawTickerCount := 10
-	go func() {
-		for {
-			listOfMemorySegments := ptop(pid)
-
-			threadTabElem.UpdateThread(listOfMemorySegments)
-
-			mmapTabElem.UpdateMmap(listOfMemorySegments)
-
-			othersTabElem.UpdateOthers(listOfMemorySegments)
-
-			termui.Render(header, tabpane)
-
-			drawTickerCount++
-			<-drawTicker.C
-		}
-	}()
-
-
-	termui.Loop()
-}
 
 func ptop(pid int32) (*[]TaskMemorySegment) {
 	var jstackResp, err = GetJavaThreadDump(pid)
@@ -307,3 +191,200 @@ func ptop(pid int32) (*[]TaskMemorySegment) {
 
 	return listOfTaskSegment
 }
+
+const CLOCK_TEXT = "[%s]"
+
+func tuiLoop(pid int32) {
+	err := termui.Init()
+	if err != nil {
+		panic(err)
+	}
+	defer termui.Close()
+
+
+	//////////////////////////////////////////////////////////////////////////////
+
+	clockText := termui.NewPar("")
+	clockText.Text = fmt.Sprintf(CLOCK_TEXT, time.Now().String())
+	clockText.Y = 1
+	clockText.Height = 1 // 1 line
+	clockText.Width = 100
+	clockText.Border = false
+	clockText.TextFgColor = termui.ColorWhite
+	clockText.TextBgColor = termui.ColorBlue
+	parTicker := time.NewTicker(1 * time.Second)
+	go func() {
+		for {
+			clockText.Text = fmt.Sprintf(time.Now().Format("2006-01-02 15:04:05 MST -07:00"))
+
+			termui.Render(clockText)
+			<-parTicker.C
+		}
+	}()
+
+
+	keybindingText := termui.NewPar("Press <Esc> to quit, Press <Right> or <Left> to switch tabs, <Ctrl-s> to sort by Write Count")
+	keybindingText.Y = 2
+	keybindingText.Height = 2 // 2 line
+	keybindingText.Width = 100  // 100 chars
+	keybindingText.Border = false
+	keybindingText.TextFgColor = termui.ColorWhite
+	keybindingText.TextBgColor = termui.ColorBlue
+
+	//////////////////////////////////////////////////////////////////////////////
+
+	termWidth := 300
+
+	tabpane := extra.NewTabpane()
+	tabpane.Y = 4
+	tabpane.Width = 50
+	tabpane.Border = true
+
+	//////////////////////////////////////////////
+	tabThread := extra.NewTab("Thread")
+	threadTabElem := NewTableTabElement(termWidth)
+	tabThread.AddBlocks(threadTabElem.Table)
+
+
+	tabMmap := extra.NewTab("MMap")
+	mmapTabElem := NewTableTabElement(termWidth)
+	tabMmap.AddBlocks(mmapTabElem.Table)
+
+
+	tabOthers := extra.NewTab("Others")
+	othersTabElem := NewTableTabElement(termWidth)
+	tabOthers.AddBlocks(othersTabElem.Table)
+
+	tabAll := extra.NewTab("All")
+	allTabElem := NewTableTabElement(termWidth)
+	tabAll.AddBlocks(allTabElem.Table)
+	/////////////////////////////////////////////
+
+	tabpane.SetTabs(*tabThread, *tabMmap, *tabOthers, *tabAll)
+	termui.Render(clockText, keybindingText, tabpane)
+	///////////////////////////////////////////////////////////////////////////////
+
+	termui.Handle("<Escape>", func(termui.Event) {
+		termui.StopLoop()
+	})
+
+	termui.Handle("<Left>", func(termui.Event) {
+		tabpane.SetActiveLeft()
+		termui.Clear()
+		termui.Render(clockText, keybindingText, tabpane)
+	})
+
+	termui.Handle("<Right>", func(termui.Event) {
+		tabpane.SetActiveRight()
+		termui.Clear()
+		termui.Render(clockText, keybindingText, tabpane)
+	})
+
+	//TODO: remember current configuration. When next tick starts, reload config and render.
+
+	tabpaneTicker := time.NewTicker(1 * time.Minute)
+	go func() {
+		for {
+			listOfMemorySegments := ptop(pid)
+
+			listOfJavaThreadSegments := filterJavaThread(listOfMemorySegments)
+
+			//TODO: 1-1 key binding for each column?
+			termui.Handle("<C-d>", func(termui.Event) {
+				sort.Sort(SortedTaskMemorySegmentVector(*listOfJavaThreadSegments))
+				threadTabElem.UpdateThread(listOfJavaThreadSegments)
+				termui.Render(clockText, keybindingText, tabpane)
+			})
+
+			termui.Handle("<C-s>", func(termui.Event) {
+				sort.Sort(WriteCountSortedTaskMemorySegmentVector{*listOfJavaThreadSegments})
+				threadTabElem.UpdateThread(listOfJavaThreadSegments)
+				termui.Render(clockText, keybindingText, tabpane)
+			})
+
+			threadTabElem.UpdateThread(listOfJavaThreadSegments)
+
+			mmapTabElem.UpdateMmap(filterMmap(listOfMemorySegments))
+
+			othersTabElem.Update(filterOthers(listOfMemorySegments))
+
+			allTabElem.Update(listOfMemorySegments)
+
+			termui.Render(tabpane)
+
+			<-tabpaneTicker.C
+		}
+	}()
+
+
+	termui.Loop()
+}
+
+//TODO: interface filter by topN element
+
+//More efficient way to retrieve JavaThread memory segment
+func filterJavaThread(listOfMemorySegments *[]TaskMemorySegment)(*[]TaskMemorySegment) {
+	list := []TaskMemorySegment{}
+
+	for i := 0; i < len(*listOfMemorySegments); i++ {
+		segment := (*listOfMemorySegments)[i]
+
+		if (segment.frameType == "JavaThread") {
+			list = append(list, segment)
+		}
+	}
+
+	return &list
+}
+
+//More efficient way to retrieve mmap memory segment
+func filterMmap(listOfMemorySegments *[]TaskMemorySegment)(*[]TaskMemorySegment) {
+	list := []TaskMemorySegment{}
+
+	for i := 0; i < len(*listOfMemorySegments); i++ {
+		segment := (*listOfMemorySegments)[i]
+
+		if (segment.frameType == "mmap") {
+			list = append(list, segment)
+		}
+	}
+
+	return &list
+}
+
+//More efficient way to retrieve others	 memory segment
+func filterOthers(listOfMemorySegments *[]TaskMemorySegment)(*[]TaskMemorySegment) {
+	list := []TaskMemorySegment{}
+
+	for i := 0; i < len(*listOfMemorySegments); i++ {
+		segment := (*listOfMemorySegments)[i]
+
+		if (segment.frameType != "JavaThread" && segment.frameType != "mmap") {
+			list = append(list, segment)
+		}
+	}
+
+	return &list
+}
+
+//////////////////////
+
+
+////////////////////////////////////////////////////////////////
+
+//TODO: We might need a generic way to traverse all sortable columns
+type SortedTaskMemorySegmentVector []TaskMemorySegment
+
+
+func (vector SortedTaskMemorySegmentVector) Len() int           { return len(vector)}
+func (vector SortedTaskMemorySegmentVector) Swap(i, j int)      { vector[i], vector[j] = vector[j], vector[i] }
+func (vector SortedTaskMemorySegmentVector) Less(i, j int) bool { return vector[i].taskID > vector[j].taskID }
+
+
+///////////
+type WriteCountSortedTaskMemorySegmentVector struct {
+	SortedTaskMemorySegmentVector
+}
+
+func (vector WriteCountSortedTaskMemorySegmentVector) Less(i, j int) bool { return vector.SortedTaskMemorySegmentVector[i].WriteCount > vector.SortedTaskMemorySegmentVector[j].WriteCount }
+
