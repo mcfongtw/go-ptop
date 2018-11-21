@@ -6,7 +6,6 @@ import (
 	"github.com/golang/glog"
 	"os"
 	"strconv"
-	"time"
 )
 
 const DEFAULT_PROFILE_INTERVAL_IN_SECOND = 10
@@ -32,20 +31,12 @@ func main() {
 
 	tuiLoop(pid)
 
+	//TODO: reoorg logger configuration, i.e. default log directory location etc
 	glog.Flush()
 }
 
 func printUsage() {
 	fmt.Fprintf(os.Stdout, "ptop <pid>\n")
-}
-
-func mainLoop(pid int32) {
-	for {
-		fmt.Println("=======================================================================================")
-		fmt.Printf("Current Time: %v\n", time.Now().String())
-		go ptop(pid)
-		time.Sleep(DEFAULT_PROFILE_INTERVAL_IN_SECOND * time.Second)
-	}
 }
 
 

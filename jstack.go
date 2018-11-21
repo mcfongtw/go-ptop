@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/golang/glog"
 	"golang.org/x/sys/unix"
-	"log"
 	"net"
 	"os"
 	"strconv"
@@ -29,7 +28,11 @@ func GetJavaThreadDump(targetPid int32) (string, error) {
 	var exist, _ = checkFileExists(path)
 
 	if(!exist) {
-		startServer(targetPid, path)
+		err := startServer(targetPid, path)
+
+		if( err != nil) {
+			return "", err
+		}
 	}
 
 	var transportType = "unix" // or "unixgram" or "unixpacket"
@@ -57,18 +60,12 @@ func GetJavaThreadDump(targetPid int32) (string, error) {
 
 	res := readString(socket)
 
-	//threadDumpLines := strings.Split(res, "\n")
-	//
-	//for index, line := range threadDumpLines {
-	//	log.Printf("line %s : %s\n", index, line)
-	//}
-
 	socket.Close()
 
 	return res, nil
 }
 
-func startServer(pid int32, udsPath string) {
+func startServer(pid int32, udsPath string) (error) {
 	glog.V(3).Infof("Socket file does not exist. Asking process to start server...\n")
 
 	var path string = fmt.Sprintf("/proc/%d/cwd/.attach_pid%d", pid, pid)
@@ -80,13 +77,16 @@ func startServer(pid int32, udsPath string) {
 	proc, err := searchProcessByPid(pid)
 
 	if err != nil {
-		log.Fatalf("proc [%d] cannot be found! Cause: [%s]", pid, err)
+		glog.Errorf("proc [%d] cannot be found! Cause: [%s]", pid, err)
+		return err
 	}
 
 	proc.SendSignal(unix.SIGQUIT)
 
 
 	waitForSocketCreation(udsPath, 1 * time.Second, 60)
+
+	return nil
 }
 
 func waitForSocketCreation(path string, waitPeriod time.Duration, maxTimeout int64) (bool) {

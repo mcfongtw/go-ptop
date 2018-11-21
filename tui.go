@@ -141,11 +141,12 @@ func associateKernelThreadAndJavaThread(pid int32, listOfKernelThreads *[]Kernel
 ////////////////////////////////////////////////////////////////
 
 
-func ptop(pid int32) (*[]TaskMemorySegment) {
+func ptop(pid int32) (*[]TaskMemorySegment, error) {
 	var jstackResp, err = GetJavaThreadDump(pid)
 
 	if(err != nil) {
-		glog.Fatalf("GetJavaThreadDump Cause: [%s]", err)
+		glog.Errorf("GetJavaThreadDump Cause: [%s]", err)
+		return nil, err
 	}
 
 	////////////////////////////////////
@@ -161,7 +162,8 @@ func ptop(pid int32) (*[]TaskMemorySegment) {
 	listOfMemorySegment, err := GetProcessMemoryMaps(false, pid)
 
 	if err != nil {
-		glog.Fatalf("GetProcessMemoryMaps Cause: [%s]", err)
+		glog.Errorf("GetProcessMemoryMaps Cause: [%s]", err)
+		return nil, err
 	}
 
 	//for i := 0; i < len(*listOfMemorySegment); i++ {
@@ -174,7 +176,8 @@ func ptop(pid int32) (*[]TaskMemorySegment) {
 	listOfKernelThreads, err := GetListOfKernelThreadsFromJStack(pid, mapOfJavaThread)
 
 	if err != nil {
-		glog.Fatalf("GetListOfKernelThreadsFromJStack Cause: [%s]", err)
+		glog.Errorf("GetListOfKernelThreadsFromJStack Cause: [%s]", err)
+		return nil, err
 	}
 
 	for i := 0; i < len(*listOfKernelThreads); i++ {
@@ -189,7 +192,7 @@ func ptop(pid int32) (*[]TaskMemorySegment) {
 
 	//printMemorySegments(listOfTaskSegment)
 
-	return listOfTaskSegment
+	return listOfTaskSegment, nil
 }
 
 const CLOCK_TEXT = "[%s]"
@@ -285,7 +288,12 @@ func tuiLoop(pid int32) {
 	tabpaneTicker := time.NewTicker(1 * time.Minute)
 	go func() {
 		for {
-			listOfMemorySegments := ptop(pid)
+			listOfMemorySegments, err := ptop(pid)
+
+			if(err != nil) {
+				termui.StopLoop()
+				break;
+			}
 
 			listOfJavaThreadSegments := filterJavaThread(listOfMemorySegments)
 
