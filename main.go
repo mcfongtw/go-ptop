@@ -1,43 +1,66 @@
 package main
 
 import (
-	"flag"
+	"errors"
 	"fmt"
-	"github.com/golang/glog"
 	"os"
 	"strconv"
+
+	"go-ptop/pkg/analyzer"
+	"go-ptop/pkg/formatter"
+	"go-ptop/pkg/jvm"
+	"go-ptop/pkg/memory"
+	"go-ptop/pkg/proc"
 )
 
-const DEFAULT_PROFILE_INTERVAL_IN_SECOND = 10
-
 func main() {
-
-	args := os.Args
-
-	if len(args) < 2 {
-		printUsage()
-		return
+	if len(os.Args) < 2 {
+		fmt.Fprintln(os.Stderr, "Usage: go-ptop <pid>")
+		os.Exit(1)
 	}
 
-	/*
-	  Ref: https://github.com/openshift/autoheal/pull/31/commits/d6f3c88cccea70c14b151f9163d267224aeb2acc
-	  This is needed to make `glog` believe that the flags have already been parsed, otherwise every log messages is prefixed by an error message stating the the flags haven't been
-	  parsed.
-	*/
-	flag.CommandLine.Parse([]string{})
+	pid64, err := strconv.ParseInt(os.Args[1], 10, 32)
+	if err != nil || pid64 <= 0 {
+		fmt.Fprintf(os.Stderr, "Invalid PID: %v\n", os.Args[1])
+		os.Exit(1)
+	}
+	pid := int32(pid64)
 
-	var parsedPid,_ = strconv.ParseInt(args[1], 10, 32)
-	var pid = int32(parsedPid)
+	memReader := memory.NewMemoryReader()
+	jvmClient := jvm.NewClient()
+	procReader := proc.NewReader()
+	an := analyzer.New(memReader, jvmClient, procReader)
 
-	tuiLoop(pid)
+	result, err := an.Analyze(pid)
+	if err != nil {
+		printAnalyzeError(pid, err)
+		os.Exit(1)
+	}
 
-	//TODO: reoorg logger configuration, i.e. default log directory location etc
-	glog.Flush()
+	table := formatter.NewTableFormatter()
+	output, err := table.Format(result)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to format output: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Print(output)
 }
 
-func printUsage() {
-	fmt.Fprintf(os.Stdout, "ptop <pid>\n")
+func printAnalyzeError(pid int32, err error) {
+	switch {
+	case errors.Is(err, memory.ErrUnsupported):
+		fmt.Fprintln(os.Stderr, "Memory analysis is not supported on this platform. Linux is required for the MVP.")
+	case errors.Is(err, jvm.ErrUnsupported):
+		fmt.Fprintln(os.Stderr, "JVM attach is not supported on this platform.")
+	case errors.Is(err, proc.ErrUnsupported):
+		fmt.Fprintln(os.Stderr, "Kernel thread inspection is not supported on this platform.")
+	default:
+		var attachErr analyzer.ErrAttachFailed
+		if errors.As(err, &attachErr) {
+			fmt.Fprintf(os.Stderr, "Failed to attach to JVM (pid %d): %v\n", pid, attachErr.Reason)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "Failed to analyze pid %d: %v\n", pid, err)
+	}
 }
-
-
-
