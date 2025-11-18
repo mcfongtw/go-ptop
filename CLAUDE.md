@@ -134,18 +134,20 @@ go build -o go-ptop
 
 ### Testing
 ```bash
-# Run all tests
-go test ./...
+# Run all tests (requires unit build tag)
+go test ./... -tags=unit
 
 # Run tests with verbose output
-go test -v ./...
+go test -v ./... -tags=unit
 
 # Run tests for a specific package
-go test -v ./pkg/memory/...
-go test -v ./pkg/jvm/...
-go test -v ./pkg/proc/...
-go test -v ./pkg/analyzer/...
+go test -v ./pkg/memory/... -tags=unit
+go test -v ./pkg/jvm/... -tags=unit
+go test -v ./pkg/proc/... -tags=unit
+go test -v ./pkg/analyzer/... -tags=unit
 ```
+
+Note: Test files use `//go:build unit` build tag to separate unit tests from integration tests.
 
 ### Dependencies
 
