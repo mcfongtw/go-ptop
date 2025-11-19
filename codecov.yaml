@@ -1,0 +1,77 @@
+# codecov.yaml - Configuration for Codecov code coverage reporting
+# See: https://docs.codecov.com/docs/codecov-yaml
+#
+# Coverage Goals:
+# - Overall project coverage: >70%
+# - Per-package coverage: >50% for all packages
+
+# Flag management - defines and tracks uploaded flags for UI visibility
+# See: https://docs.codecov.com/docs/flags
+flag_management:
+  default_rules:
+    carryforward: true        # Use previous coverage if flag not uploaded
+
+  individual_flags:
+    # Define each flag that will be uploaded
+    - name: unit-tests
+      carryforward: true
+    - name: integration-tests
+      carryforward: true
+
+# Component definitions - isolate and categorize coverage by functional area
+# See: https://docs.codecov.com/docs/components
+component_management:
+  individual_components:
+    # Core application code - main business logic and production code
+    - component_id: core
+      name: "Core Application"
+      paths:
+        - "pkg/memory/*.go"
+        - "pkg/jvm/*.go"
+        - "pkg/proc/*.go"
+        - "pkg/analyzer/*.go"
+        - "pkg/formatter/*.go"
+        - "pkg/config/*.go"
+        - "pkg/ui/*.go"
+        - "pkg/util/*.go"
+        - "main.go"
+
+coverage:
+  ignore:
+    # Mock implementations for testing - not production code
+    - "**/mock.go"
+    - "**/stub.go"
+    - "**/test_setup.go"
+    - "test_setup.go"
+
+  # Coverage thresholds and flag configuration
+  status:
+    project:
+      default:
+        target: 70%           # Overall project target: >70%
+        threshold: 1%         # Allow 1% variance before failing
+        # Only track coverage from these two flag categories:
+        # - unit-tests: All unit test workflows
+        # - integration-tests: All integration test workflows
+        flags:
+          - unit-tests
+          - integration-tests
+    patch:
+      default:
+        target: 55%           # New code patches must have at least 55% coverage
+        threshold: 5%         # Allow 5% variance (50% minimum to pass)
+        flags:
+          - unit-tests
+          - integration-tests
+
+  # Coverage precision settings
+  precision: 2                # Report coverage to 2 decimal places
+  round: down                 # Round coverage down (conservative)
+
+
+# Comment configuration for pull requests
+comment:
+  layout: "condensed_header, condensed_files, condensed_footer"
+  hide_project_coverage: true
+  behavior: default
+  require_changes: "coverage_drop"
