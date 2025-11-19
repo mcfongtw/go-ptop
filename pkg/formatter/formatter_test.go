@@ -13,265 +13,307 @@ import (
 	"go-ptop/pkg/proc"
 )
 
-func TestNewTableFormatterReturnsDefaults(t *testing.T) {
-	f := NewTableFormatter()
+func Test_NewTableFormatter_ReturnsDefaults(t *testing.T) {
+	teardownSuite := setupSuite(t)
+	defer teardownSuite(t)
 
-	if f == nil {
-		t.Fatal("expected non-nil formatter")
+	tests := []struct {
+		name          string
+		checkField    string
+		expectedValue interface{}
+	}{
+		{"default_sort_by", "SortBy", SortByRSS},
+		{"default_top_n", "TopN", 50},
+		{"default_width", "Width", 4},
 	}
-	if f.SortBy != SortByRSS {
-		t.Errorf("expected SortBy to be %s, got %s", SortByRSS, f.SortBy)
-	}
-	if f.TopN != 50 {
-		t.Errorf("expected TopN to be 50, got %d", f.TopN)
-	}
-	if f.Width != 4 {
-		t.Errorf("expected Width to be 4, got %d", f.Width)
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			teardownTest := setupTest(t)
+			defer teardownTest(t)
+
+			f := NewTableFormatter()
+			if f == nil {
+				t.Fatal("expected non-nil formatter")
+			}
+
+			switch tc.checkField {
+			case "SortBy":
+				if f.SortBy != tc.expectedValue.(SortColumn) {
+					t.Errorf("expected SortBy to be %s, got %s", tc.expectedValue, f.SortBy)
+				}
+			case "TopN":
+				if f.TopN != tc.expectedValue.(int) {
+					t.Errorf("expected TopN to be %d, got %d", tc.expectedValue, f.TopN)
+				}
+			case "Width":
+				if f.Width != tc.expectedValue.(int) {
+					t.Errorf("expected Width to be %d, got %d", tc.expectedValue, f.Width)
+				}
+			}
+		})
 	}
 }
 
-func TestTableFormatterFormatNilResult(t *testing.T) {
-	f := NewTableFormatter()
+func Test_TableFormatter_Format_ErrorCases(t *testing.T) {
+	teardownSuite := setupSuite(t)
+	defer teardownSuite(t)
 
-	_, err := f.Format(nil)
-	if err == nil {
-		t.Fatal("expected error for nil result")
+	tests := []struct {
+		name           string
+		result         *analyzer.AnalysisResult
+		expectError    bool
+		errorContains  string
+	}{
+		{
+			name:          "nil_result",
+			result:        nil,
+			expectError:   true,
+			errorContains: "nil",
+		},
 	}
-	if !strings.Contains(err.Error(), "nil") {
-		t.Errorf("expected error to mention nil, got: %s", err.Error())
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			teardownTest := setupTest(t)
+			defer teardownTest(t)
+
+			f := NewTableFormatter()
+			_, err := f.Format(tc.result)
+
+			if tc.expectError {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tc.errorContains) {
+					t.Errorf("expected error to contain '%s', got: %s", tc.errorContains, err.Error())
+				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }
 
-func TestTableFormatterFormatEmptyResult(t *testing.T) {
-	f := NewTableFormatter()
+func Test_TableFormatter_Format_ValidResults(t *testing.T) {
+	teardownSuite := setupSuite(t)
+	defer teardownSuite(t)
 
-	result := &analyzer.AnalysisResult{
-		PID:       1234,
-		Timestamp: time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
-		Threads:   []analyzer.ThreadMemorySegment{},
-	}
-
-	output, err := f.Format(result)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if !strings.Contains(output, "1234") {
-		t.Error("expected output to contain PID")
-	}
-	if !strings.Contains(output, "TID") {
-		t.Error("expected output to contain header")
-	}
-}
-
-func TestTableFormatterFormatWithThreads(t *testing.T) {
-	f := NewTableFormatter()
-
-	result := &analyzer.AnalysisResult{
-		PID:       5678,
-		Timestamp: time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
-		Threads: []analyzer.ThreadMemorySegment{
-			{
-				JavaThread: &jvm.JavaThread{
-					Name:        "main",
-					ThreadState: "RUNNABLE",
+	tests := []struct {
+		name            string
+		result          *analyzer.AnalysisResult
+		expectedStrings []string
+	}{
+		{
+			name: "empty_result",
+			result: &analyzer.AnalysisResult{
+				PID:       1234,
+				Timestamp: time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
+				Threads:   []analyzer.ThreadMemorySegment{},
+			},
+			expectedStrings: []string{"1234", "TID"},
+		},
+		{
+			name: "with_threads",
+			result: &analyzer.AnalysisResult{
+				PID:       5678,
+				Timestamp: time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
+				Threads: []analyzer.ThreadMemorySegment{
+					{
+						JavaThread: &jvm.JavaThread{
+							Name:        "main",
+							ThreadState: "RUNNABLE",
+						},
+						KernelThread: proc.KernelThread{
+							TID:   100,
+							State: "R",
+						},
+						Segment: memory.ProcessMemorySegment{
+							RSS: 1024,
+						},
+						IOStats: proc.IOStats{
+							ReadCount:  10,
+							WriteCount: 20,
+							ReadBytes:  1000,
+							WriteBytes: 2000,
+						},
+					},
 				},
-				KernelThread: proc.KernelThread{
-					TID:   100,
-					State: "R",
-				},
-				Segment: memory.ProcessMemorySegment{
-					RSS: 1024,
-				},
-				IOStats: proc.IOStats{
-					ReadCount:  10,
-					WriteCount: 20,
-					ReadBytes:  1000,
-					WriteBytes: 2000,
-				},
 			},
+			expectedStrings: []string{"main", "100", "RUNNABLE"},
 		},
 	}
 
-	output, err := f.Format(result)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			teardownTest := setupTest(t)
+			defer teardownTest(t)
 
-	if !strings.Contains(output, "main") {
-		t.Error("expected output to contain thread name 'main'")
-	}
-	if !strings.Contains(output, "100") {
-		t.Error("expected output to contain TID 100")
-	}
-	if !strings.Contains(output, "RUNNABLE") {
-		t.Error("expected output to contain thread state")
+			f := NewTableFormatter()
+			output, err := f.Format(tc.result)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			for _, expected := range tc.expectedStrings {
+				if !strings.Contains(output, expected) {
+					t.Errorf("expected output to contain '%s'", expected)
+				}
+			}
+		})
 	}
 }
 
-func TestTableFormatterSortByThreadID(t *testing.T) {
-	f := NewTableFormatter()
-	f.SortBy = SortByThreadID
+func Test_TableFormatter_SortOptions(t *testing.T) {
+	teardownSuite := setupSuite(t)
+	defer teardownSuite(t)
 
-	result := &analyzer.AnalysisResult{
-		PID:       1234,
-		Timestamp: time.Now(),
-		Threads: []analyzer.ThreadMemorySegment{
-			{
-				KernelThread: proc.KernelThread{TID: 300},
-				Segment:      memory.ProcessMemorySegment{RSS: 100},
+	tests := []struct {
+		name       string
+		sortBy     SortColumn
+		threads    []analyzer.ThreadMemorySegment
+		firstTID   string
+		secondTID  string
+	}{
+		{
+			name:   "sort_by_thread_id",
+			sortBy: SortByThreadID,
+			threads: []analyzer.ThreadMemorySegment{
+				{KernelThread: proc.KernelThread{TID: 300}, Segment: memory.ProcessMemorySegment{RSS: 100}},
+				{KernelThread: proc.KernelThread{TID: 100}, Segment: memory.ProcessMemorySegment{RSS: 200}},
+				{KernelThread: proc.KernelThread{TID: 200}, Segment: memory.ProcessMemorySegment{RSS: 150}},
 			},
-			{
-				KernelThread: proc.KernelThread{TID: 100},
-				Segment:      memory.ProcessMemorySegment{RSS: 200},
+			firstTID:  "100",
+			secondTID: "200",
+		},
+		{
+			name:   "sort_by_write_count",
+			sortBy: SortByWriteCount,
+			threads: []analyzer.ThreadMemorySegment{
+				{KernelThread: proc.KernelThread{TID: 101}, Segment: memory.ProcessMemorySegment{RSS: 50}, IOStats: proc.IOStats{WriteCount: 10}},
+				{KernelThread: proc.KernelThread{TID: 202}, Segment: memory.ProcessMemorySegment{RSS: 50}, IOStats: proc.IOStats{WriteCount: 999}},
 			},
-			{
-				KernelThread: proc.KernelThread{TID: 200},
-				Segment:      memory.ProcessMemorySegment{RSS: 150},
+			firstTID:  "202",
+			secondTID: "101",
+		},
+		{
+			name:   "sort_by_read_count",
+			sortBy: SortByReadCount,
+			threads: []analyzer.ThreadMemorySegment{
+				{KernelThread: proc.KernelThread{TID: 103}, Segment: memory.ProcessMemorySegment{RSS: 50}, IOStats: proc.IOStats{ReadCount: 5}},
+				{KernelThread: proc.KernelThread{TID: 204}, Segment: memory.ProcessMemorySegment{RSS: 50}, IOStats: proc.IOStats{ReadCount: 888}},
 			},
+			firstTID:  "204",
+			secondTID: "103",
 		},
 	}
 
-	output, err := f.Format(result)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			teardownTest := setupTest(t)
+			defer teardownTest(t)
 
-	// Check that TID 100 appears before TID 200 which appears before TID 300
-	idx100 := strings.Index(output, "100")
-	idx200 := strings.Index(output, "200")
-	idx300 := strings.Index(output, "300")
+			f := NewTableFormatter()
+			f.SortBy = tc.sortBy
 
-	if idx100 > idx200 || idx200 > idx300 {
-		t.Error("expected threads to be sorted by TID ascending")
+			result := &analyzer.AnalysisResult{
+				PID:       1234,
+				Timestamp: time.Now(),
+				Threads:   tc.threads,
+			}
+
+			output, err := f.Format(result)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			idxFirst := strings.Index(output, tc.firstTID)
+			idxSecond := strings.Index(output, tc.secondTID)
+
+			if idxFirst > idxSecond {
+				t.Errorf("expected TID %s to appear before TID %s", tc.firstTID, tc.secondTID)
+			}
+		})
 	}
 }
 
-func TestTableFormatterTopNLimit(t *testing.T) {
-	f := NewTableFormatter()
-	f.TopN = 2
+func Test_TableFormatter_TopNLimit(t *testing.T) {
+	teardownSuite := setupSuite(t)
+	defer teardownSuite(t)
 
-	result := &analyzer.AnalysisResult{
-		PID:       1234,
-		Timestamp: time.Now(),
-		Threads: []analyzer.ThreadMemorySegment{
-			{KernelThread: proc.KernelThread{TID: 1}, Segment: memory.ProcessMemorySegment{RSS: 300}},
-			{KernelThread: proc.KernelThread{TID: 2}, Segment: memory.ProcessMemorySegment{RSS: 200}},
-			{KernelThread: proc.KernelThread{TID: 3}, Segment: memory.ProcessMemorySegment{RSS: 100}},
+	tests := []struct {
+		name      string
+		topN      int
+		threads   []analyzer.ThreadMemorySegment
+		maxLines  int
+	}{
+		{
+			name: "limit_to_two",
+			topN: 2,
+			threads: []analyzer.ThreadMemorySegment{
+				{KernelThread: proc.KernelThread{TID: 1}, Segment: memory.ProcessMemorySegment{RSS: 300}},
+				{KernelThread: proc.KernelThread{TID: 2}, Segment: memory.ProcessMemorySegment{RSS: 200}},
+				{KernelThread: proc.KernelThread{TID: 3}, Segment: memory.ProcessMemorySegment{RSS: 100}},
+			},
+			maxLines: 4, // header line + 2 data lines + trailing
 		},
 	}
 
-	output, err := f.Format(result)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			teardownTest := setupTest(t)
+			defer teardownTest(t)
 
-	// Should only contain TID 1 and 2 (highest RSS), not TID 3
-	if strings.Count(output, "\n") > 4 { // header line + 2 data lines + trailing
-		t.Error("expected output to be limited by TopN")
-	}
-}
+			f := NewTableFormatter()
+			f.TopN = tc.topN
 
-func TestJSONFormatterReturnsNotImplemented(t *testing.T) {
-	f := NewJSONFormatter()
+			result := &analyzer.AnalysisResult{
+				PID:       1234,
+				Timestamp: time.Now(),
+				Threads:   tc.threads,
+			}
 
-	result := &analyzer.AnalysisResult{
-		PID:       1234,
-		Timestamp: time.Now(),
-	}
+			output, err := f.Format(result)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 
-	_, err := f.Format(result)
-	if err == nil {
-		t.Fatal("expected error from stub JSON formatter")
-	}
-	if !strings.Contains(err.Error(), "not implemented") {
-		t.Errorf("expected 'not implemented' error, got: %s", err.Error())
+			if strings.Count(output, "\n") > tc.maxLines {
+				t.Error("expected output to be limited by TopN")
+			}
+		})
 	}
 }
 
-func TestTextFormatterReturnsNotImplemented(t *testing.T) {
-	f := NewTextFormatter()
+func Test_StubFormatters_ReturnNotImplemented(t *testing.T) {
+	teardownSuite := setupSuite(t)
+	defer teardownSuite(t)
 
-	result := &analyzer.AnalysisResult{
-		PID:       1234,
-		Timestamp: time.Now(),
+	tests := []struct {
+		name      string
+		formatter Formatter
+	}{
+		{"json_formatter", NewJSONFormatter()},
+		{"text_formatter", NewTextFormatter()},
 	}
 
-	_, err := f.Format(result)
-	if err == nil {
-		t.Fatal("expected error from stub text formatter")
-	}
-	if !strings.Contains(err.Error(), "not implemented") {
-		t.Errorf("expected 'not implemented' error, got: %s", err.Error())
-	}
-}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			teardownTest := setupTest(t)
+			defer teardownTest(t)
 
-func TestTableFormatterSortByWriteCount(t *testing.T) {
-	f := NewTableFormatter()
-	f.SortBy = SortByWriteCount
+			result := &analyzer.AnalysisResult{
+				PID:       1234,
+				Timestamp: time.Now(),
+			}
 
-	result := &analyzer.AnalysisResult{
-		PID:       1234,
-		Timestamp: time.Now(),
-		Threads: []analyzer.ThreadMemorySegment{
-			{
-				KernelThread: proc.KernelThread{TID: 1},
-				Segment:      memory.ProcessMemorySegment{RSS: 100},
-				IOStats:      proc.IOStats{WriteCount: 10},
-			},
-			{
-				KernelThread: proc.KernelThread{TID: 2},
-				Segment:      memory.ProcessMemorySegment{RSS: 100},
-				IOStats:      proc.IOStats{WriteCount: 100},
-			},
-		},
-	}
-
-	output, err := f.Format(result)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// TID 2 should appear before TID 1 (higher write count)
-	idx1 := strings.Index(output, "\t1\t")
-	idx2 := strings.Index(output, "\t2\t")
-
-	if idx2 > idx1 && idx1 != -1 {
-		t.Error("expected thread with higher write count to appear first")
-	}
-}
-
-func TestTableFormatterSortByReadCount(t *testing.T) {
-	f := NewTableFormatter()
-	f.SortBy = SortByReadCount
-
-	result := &analyzer.AnalysisResult{
-		PID:       1234,
-		Timestamp: time.Now(),
-		Threads: []analyzer.ThreadMemorySegment{
-			{
-				KernelThread: proc.KernelThread{TID: 1},
-				Segment:      memory.ProcessMemorySegment{RSS: 100},
-				IOStats:      proc.IOStats{ReadCount: 5},
-			},
-			{
-				KernelThread: proc.KernelThread{TID: 2},
-				Segment:      memory.ProcessMemorySegment{RSS: 100},
-				IOStats:      proc.IOStats{ReadCount: 50},
-			},
-		},
-	}
-
-	output, err := f.Format(result)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// TID 2 should appear before TID 1 (higher read count)
-	idx1 := strings.Index(output, "\t1\t")
-	idx2 := strings.Index(output, "\t2\t")
-
-	if idx2 > idx1 && idx1 != -1 {
-		t.Error("expected thread with higher read count to appear first")
+			_, err := tc.formatter.Format(result)
+			if err == nil {
+				t.Fatal("expected error from stub formatter")
+			}
+			if !strings.Contains(err.Error(), "not implemented") {
+				t.Errorf("expected 'not implemented' error, got: %s", err.Error())
+			}
+		})
 	}
 }
